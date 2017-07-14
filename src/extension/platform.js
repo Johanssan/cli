@@ -122,5 +122,9 @@ export async function downloadApp(appId, destinationDir, options = {}) {
 
 async function pullPlatform(version, destination, options) {
   const url = `${cliUrls.mobileAppUrl}/archive/v${version}.tar.gz`;
-  await decompressUri(url, destination, { ...options, strip: 1, useCache: options.useCache });
+  await decompressUri(url, destination, { ...options, strip: 1 });
+}
+
+async function addLocalDependency(platformDir, dependencyDir) {
+
 }

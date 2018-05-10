@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import * as analytics from './analytics';
-import {readJsonFile, writeJsonFile} from "./data";
+import { readJsonFile, writeJsonFile } from './data';
 
 export function getExtensionCanonicalName(devName, extName, extVersion) {
   const canonicalName = `${devName}.${extName}-${extVersion}`;
@@ -70,10 +70,10 @@ export function extensionJsonPath(rootPath) {
   return path.join(rootPath, 'extension.json');
 }
 
-export async function loadExtensionJson(rootPath = ensureInExtensionDir()) {
-  return await readJsonFile(extensionJsonPath(rootPath));
+export function loadExtensionJson(rootPath = ensureInExtensionDir()) {
+  return readJsonFile(extensionJsonPath(rootPath));
 }
 
-export async function saveExtensionJson(json, rootPath = ensureInExtensionDir()){
-  return await writeJsonFile(json, extensionJsonPath(rootPath));
+export function saveExtensionJson(json, rootPath = ensureInExtensionDir()) {
+  return writeJsonFile(extensionJsonPath(rootPath), json);
 }

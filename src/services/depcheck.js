@@ -18,10 +18,13 @@ export async function getMissingDependencies(npmModuleRoot) {
 
 export default async function(extensionRoot) {
   const appDependencies = await getMissingDependencies(path.join(extensionRoot, 'app'));
+
   if (appDependencies.length) {
     throw new Error(`${extensionRoot} app is missing some dependencies: ${appDependencies.join(',')}. Run with --nocheck to ignore`);
   }
+
   const serverDependencies = await getMissingDependencies(path.join(extensionRoot, 'server'));
+
   if (serverDependencies.length) {
     throw new Error(`${extensionRoot}/server is missing some dependencies: ${serverDependencies.join(',')}. Run with --nocheck to ignore`);
   }

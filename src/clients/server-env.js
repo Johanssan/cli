@@ -1,8 +1,8 @@
 import path from 'path';
 import fs from 'fs-extra';
-import { getLocalStoragePathSync } from '../clients/cli-paths';
+import { getLocalStoragePath } from '../clients/cli-paths';
 
-const serverEnvNamePath = path.join(getLocalStoragePathSync(), 'server-env');
+const serverEnvNamePath = path.join(getLocalStoragePath(), 'server-env');
 
 export function getHostEnvName() {
   try {
@@ -12,6 +12,6 @@ export function getHostEnvName() {
   }
 }
 
-export async function setHostEnvName(name) {
-  await fs.writeFile(serverEnvNamePath, name);
+export function setHostEnvName(name) {
+  fs.writeFileSync(serverEnvNamePath, name);
 }

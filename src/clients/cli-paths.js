@@ -1,15 +1,8 @@
-import mkdirp from 'mkdirp-promise';
-import { sync as mkdirpSync } from 'mkdirp';
+import fs from 'fs-extra';
 import getHomeDir from '../home-dir';
 
-export async function getLocalStoragePath() {
+export function getLocalStoragePath() {
   const storagePath = getHomeDir();
-  await mkdirp(storagePath);
-  return storagePath;
-}
-
-export function getLocalStoragePathSync() {
-  const storagePath = getHomeDir();
-  mkdirpSync(storagePath);
+  fs.ensureDirSync(storagePath);
   return storagePath;
 }

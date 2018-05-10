@@ -15,15 +15,15 @@ import { pathExists, readJson, readFile, writeFile } from 'fs-extra';
 import commandExists from './command-exists';
 import {readJsonFile} from "./data";
 
-async function isPlatformDirectory(dir) {
-  const { name } = await readJsonFile(path.join(dir, 'package.json')) || {};
+function isPlatformDirectory(dir) {
+  const { name } = readJsonFile(path.join(dir, 'package.json')) || {};
 
   // platform package was renamed with Platform release v1.1.10
   return name === '@shoutem/mobile-app' || name === '@shoutem/platform';
 }
 
 export async function getPlatformRootDir(dir = process.cwd(), { shouldThrow = true } = {}) {
-  if (await isPlatformDirectory(dir)) {
+  if (isPlatformDirectory(dir)) {
     return dir;
   }
 
@@ -36,6 +36,7 @@ export async function getPlatformRootDir(dir = process.cwd(), { shouldThrow = tr
       return null;
     }
   }
+
   return await getPlatformRootDir(parentDir, { shouldThrow });
 }
 
@@ -70,8 +71,8 @@ export async function getPlatformConfig(platformDir = null) {
   return await readJson(path.join(platformDir || await getPlatformRootDir(), 'config.json'));
 }
 
-export async function setPlatformConfig(platformDir, mobileConfig) {
-  await writeJsonFile(mobileConfig, path.join(platformDir, 'config.json'));
+export function setPlatformConfig(platformDir, mobileConfig) {
+  writeJsonFile(path.join(platformDir, 'config.json'), mobileConfig);
 }
 
 export async function configurePlatform(platformDir) {

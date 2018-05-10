@@ -1,8 +1,9 @@
 import path from 'path';
 import Promise from 'bluebird';
-import { readJson } from 'fs-extra';
+import fs from 'fs-extra';
 import { spawn } from 'child-process-promise';
-import {writeJsonFile} from "./data";
+import { writeJsonFile, readJsonFile } from "./data";
+
 const linkLocal = Promise.promisify(require('linklocal'));
 
 export async function install(cwd = process.cwd()) {
@@ -28,21 +29,21 @@ export async function run(cwd, task, taskArgs = [], npmOptions = []) {
   return await spawned;
 }
 
-export async function getPackageJson(npmProjectPath) {
-  return await readJson(path.join(npmProjectPath, 'package.json'));
+export function getPackageJson(npmProjectPath) {
+  return readJsonFile(path.join(npmProjectPath, 'package.json'));
 }
 
-export async function savePackageJson(npmProjectPath, pkgJson) {
-  return await writeJsonFile(pkgJson, path.join(npmProjectPath, 'package.json'));
+export function savePackageJson(npmProjectPath, pkgJson) {
+  return writeJsonFile(path.join(npmProjectPath, 'package.json'), pkgJson);
 }
 
-export async function addLocalDependency(npmProjectPath, npmModulePath) {
-  const { name } = await getPackageJson(npmModulePath);
-  const packageJson = await getPackageJson(npmProjectPath);
+export function addLocalDependency(npmProjectPath, npmModulePath) {
+  const { name } = getPackageJson(npmModulePath);
+  const packageJson = getPackageJson(npmProjectPath);
 
   const dependencyValue = 'file:' + path.relative(npmProjectPath, npmModulePath);
 
-  await savePackageJson(npmProjectPath, {
+  savePackageJson(npmProjectPath, {
     ...packageJson,
     dependencies: {
       ...packageJson.dependencies,

@@ -136,20 +136,25 @@ const authorizationConfig = {
   shouldWaitForTokenRenewal: true
 };
 
-export async function authorizeRequests(refreshToken) {
+export function authorizeRequests(refreshToken) {
   if (!refreshToken) {
     return;
   }
+
   try {
     const intercept = require('@shoutem/fetch-token-intercept');
+    const accessToken = cache.getValue('access-token');
+
     intercept.configure(authorizationConfig);
-    intercept.authorize(refreshToken, await cache.getValue('access-token'));
+    intercept.authorize(refreshToken, accessToken);
     return true;
   } catch (err) {
     logger.info(err);
+
     if (err.statusCode !== 401) {
       throw err;
     }
+
     return false;
   }
 }

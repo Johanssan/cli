@@ -7,6 +7,7 @@ const packageJson = require('../package.json');
 require('colors');
 
 const homeDir = getHomeDir();
+const nodeVer = process.versions.node;
 
 if (!path.isAbsolute(homeDir)) {
   console.log(`ERROR: path ${homeDir} is not an absolute path.`.red);
@@ -14,9 +15,9 @@ if (!path.isAbsolute(homeDir)) {
   process.exit(1);
 }
 
-if (semver.lt(process.versions.node, '6.0.0')) {
-  console.error(`You appear to be using Node v${process.versions.node}, however, Node 6 or later is required`);
-  return;
+if (semver.lt(nodeVer, '6.0.0')) {
+  console.error(`You appear to be using Node v${nodeVer}, however, Node 6 or later is required`);
+  process.exit(1);
 }
 
 const babelCachePath = path.join(homeDir, 'cache', 'babel-cache');

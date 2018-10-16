@@ -9,30 +9,30 @@ import { ensureUserIsLoggedIn } from '../commands/login';
 import { handleError } from '../services/error-handler';
 
 export const description = 'Install the current extension to an application.';
-
 export const command = 'install';
-export const builder = yargs => {
-  return yargs
-    .options({
-      app: {
-        alias: 'a',
-        description: 'app id to install current extension to',
-        requiresArg: true
-      },
-      new: {
-        alias: 'n',
-        description: 'install to a new app with given name',
-        type: 'string'
-      }})
-    .usage(`usage: shoutem ${command} [options]\n\n${description}`);
+export const usage = `usage: shoutem ${command} [options]\n\n${description}`;
+export const options = {
+  app: {
+    alias: 'a',
+    description: 'app id to install current extension to',
+    requiresArg: true,
+  },
+  new: {
+    alias: 'n',
+    description: 'install to a new app with given name',
+    type: 'string',
+  },
 };
+
+export const builder = yargs => yargs.options(options).usage(usage);
 
 export async function handler(options) {
   try {
     await ensureUserIsLoggedIn();
-    const appCreationRequested = options.new || options.new === '';
 
+    const appCreationRequested = options.new || options.new === '';
     let appId;
+
     if (appCreationRequested) {
       if (options.app) {
         throw new Error('`app` and `new` flags can\'t be used together');

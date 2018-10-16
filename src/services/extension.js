@@ -60,10 +60,10 @@ export function loadExtensionJsonCallback(callback) {
  */
 export function saveExtensionJsonCallback(extJson, callback) {
   const root = ensureInExtensionDir();
-  fs.writeFile(path.join(root, 'extension.json'),
-    `${JSON.stringify(extJson, null, 2)}\n`,
-    'utf8',
-    err => callback(err, extJson));
+  const filePath = path.join(root, 'extension.json');
+  const contents = `${JSON.stringify(extJson, null, 2)}\n`;
+
+  fs.writeFile(filePath, contents, 'utf8', err => callback(err, extJson));
 }
 
 export function extensionJsonPath(rootPath) {

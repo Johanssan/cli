@@ -1,8 +1,12 @@
-import fs from 'fs-extra';
-import getHomeDir from '../home-dir';
+const fs = require('fs-extra');
+const path = require('path');
 
-export function getLocalStoragePath() {
+const getHomeDir = require(path.resolve(__dirname, '../home-dir.js'));
+
+function getLocalStoragePath() {
   const storagePath = getHomeDir();
   fs.ensureDirSync(storagePath);
   return storagePath;
 }
+
+module.exports.getLocalStoragePath = getLocalStoragePath;

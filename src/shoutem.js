@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 const semver = require('semver');
 const path = require('path');
 const getHomeDir = require('./home-dir');
@@ -8,6 +7,12 @@ require('colors');
 
 const homeDir = getHomeDir();
 const nodeVer = process.versions.node;
+const cliArgs = process.argv.slice(2);
+
+if (cliArgs[0] === '-v' || cliArgs[0] === '--version') {
+  console.log(packageJson.version);
+  process.exit(0);
+}
 
 if (!path.isAbsolute(homeDir)) {
   console.log(`ERROR: path ${homeDir} is not an absolute path.`.red);
@@ -23,5 +28,10 @@ if (semver.lt(nodeVer, '6.0.0')) {
 const babelCachePath = path.join(homeDir, 'cache', 'babel-cache');
 process.env.BABEL_CACHE_PATH = process.env.BABEL_CACHE_PATH || babelCachePath;
 
-require('babel-register')(packageJson.babel);
+const currentScriptDir = path.basename(__dirname);
+
+if (currentScriptDir === 'src') {
+  require('babel-register')(packageJson.babel);
+}
+
 require('./cli');

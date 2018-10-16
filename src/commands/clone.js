@@ -1,8 +1,6 @@
-import { pathExists, copy } from 'fs-extra';
-import mkdirp from 'mkdirp-promise';
+import fs from 'fs-extra';
+import download from 'download';
 import inquirer from 'inquirer';
-import Promise from 'bluebird';
-import tmp from 'tmp-promise';
 import slugify from 'slugify';
 import semver from 'semver';
 import rmrf from 'rmfr';
@@ -17,9 +15,14 @@ import { getApp } from '../clients/legacy-service';
 import { getHttpErrorMessage } from '../services/get-http-error-message';
 import { createProgressHandler } from '../services/progress-bar';
 import commandExists from '../services/command-exists';
-import { shoutemUnpack, checkZipFileIntegrity } from '../services/packer';
+import { shoutemUnpack } from '../services/packer';
 import selectApp from '../services/app-selector';
 import { spinify } from '../services/spinner';
+import {
+  checkZipFileIntegrity,
+  createTempDir,
+  removeTrailingSlash,
+} from '../services/util';
 import {
   downloadApp,
   fixPlatform,
@@ -28,53 +31,47 @@ import {
   setPlatformConfig,
 } from '../services/platform';
 
-const downloadFile = Promise.promisify(require('download-file'));
+async function getExtensionUrl(extId) {
+  const resp = await getExtension(extId);
+  const { location: { extension } } = resp;
+  const extensionPath = removeTrailingSlash(extension.package);
 
-const extensionDownloadRetried = {};
-
-export async function pullExtensions(appId, destinationDir) {
-  const installations = await appManager.getInstallations(appId);
-  const n = installations.length;
-  let i = 0;
-  for(const inst of installations) {
-    i++;
-    await spinify(
-      pullExtension(destinationDir, inst), `Downloading extension ${i}/${n}: ${inst.canonicalName}`
-    );
-  }
+  return path.join(extensionPath, 'extension.tgz');
 }
 
-async function pullExtension(destinationDir, { extension, canonicalName }) {
+async function downloadExtension(extension, canonicalName) {
   const url = await getExtensionUrl(extension);
-  const tgzDir = (await tmp.dir()).path;
+  const tmpDir = await createTempDir();
+  const fileName = 'extension.tgz';
+  const tgzFile = path.join(tmpDir, fileName);
 
   try {
-    await downloadFile(url, { directory: tgzDir, filename: 'extension.tgz' });
+    const fileData = await download(url);
+    fs.writeFileSync(tgzFile, fileData);
   } catch (err) {
     const errorMessage = getHttpErrorMessage(err.message);
     err.message = `Could not fetch extension ${canonicalName}\nRequested URL: ${url}\n${errorMessage}`;
     throw err;
   }
 
-  const tgzFile = path.join(tgzDir, 'extension.tgz');
-  
-  if (!(await pathExists(tgzFile))) {
-    throw new Error(`File not found: ${tgzFile}`);
-  }
+  return tgzFile;
+}
 
-  const zipCheck = checkZipFileIntegrity(tgzFile);
-  
+async function pullExtension(destinationDir, { extension, canonicalName }) {
+  let tgzFile = await downloadExtension(extension);
+  let zipCheck = checkZipFileIntegrity(tgzFile);
+
   if (zipCheck !== true) {
     if (zipCheck.code === 'Z_BUF_ERROR') {
-      if (extensionDownloadRetried[canonicalName] !== true) {
-        // try downloading the (possibly corrupted) archive one more time
-        console.warn("\nReceived Z_BUF_ERROR, retrying download...");
-        extensionDownloadRetried[canonicalName] = true;
-        return pullExtension(destinationDir, { extension, canonicalName });
+      // try downloading the (possibly corrupted) archive one more time
+      console.warn('\nReceived Z_BUF_ERROR, retrying download...');
+      tgzFile = await downloadExtension(extension, canonicalName);
+      zipCheck = checkZipFileIntegrity(tgzFile);
+
+      if (zipCheck !== true) {
+        throw (zipCheck);
       }
     }
-
-    throw (zipCheck);
   }
 
   const destination = path.join(destinationDir, canonicalName);
@@ -86,22 +83,24 @@ async function pullExtension(destinationDir, { extension, canonicalName }) {
   }
 }
 
-async function getExtensionUrl(extId) {
-  const resp = await getExtension(extId);
-  const { location: { extension } } = resp;
+export async function pullExtensions(appId, destinationDir) {
+  const installations = await appManager.getInstallations(appId);
+  const n = installations.length;
+  const i = 0;
 
-  return `${removeTrailingSlash(extension.package)}/extension.tgz`;
-}
-
-function removeTrailingSlash(str) {
-  return str.replace(/\/$/, "");
+  for (i; i < n; i + 1) {
+    const inst = installations[i];
+    const message = `Downloading extension ${i}/${n}: ${inst.canonicalName}`;
+    await spinify(pullExtension(destinationDir, inst), message);
+  }
 }
 
 function ensurePlatformCompatibility(platform) {
-  const msg = `Your app is using Shoutem Platform ${platform.version}`+
-    `, but cloning is supported only on Shoutem Platform 1.1.2 or later.\n`+
-    `Please, update the Platform through Settings -> Shoutem Platform -> Install page on the Builder or install older (and unsupported) version of ` +
-    `the Shoutem CLI by running 'npm install -g @shoutem/cli@0.0.152'`;
+  const msg = `Your app is using Shoutem Platform ${platform.version},
+    but cloning is supported only on Shoutem Platform 1.1.2 or later.
+    Please update the Platform through Settings -> Shoutem Platform -> Install page
+    on the Builder, or install older (and unsupported) version of
+    the Shoutem CLI by running 'npm install -g @shoutem/cli@0.0.152'`;
 
   if (semver.lte(platform.version, '1.1.1')) {
     throw new Error(msg);
@@ -115,14 +114,14 @@ async function queryPathExistsAction(destinationDir, oldDirectoryName) {
     message: `Directory ${oldDirectoryName} already exists`,
     choices: [{
       name: 'Overwrite',
-      value: 'overwrite'
+      value: 'overwrite',
     }, {
       name: 'Abort',
       value: 'abort',
     }, {
       name: 'Different app directory name',
-      value: 'rename'
-    }]
+      value: 'rename',
+    }],
   });
 
   if (action === 'overwrite') {
@@ -139,42 +138,57 @@ async function queryPathExistsAction(destinationDir, oldDirectoryName) {
       if (dirName.indexOf(' ') > -1) {
         return 'No spaces are allowed';
       }
-      if (await pathExists(path.join(destinationDir, dirName))) {
-        return `Directory ${dirName} already exists.`
+      if (fs.pathExistsSync(path.join(destinationDir, dirName))) {
+        return `Directory ${dirName} already exists.`;
       }
       return true;
-    }
+    },
   });
 
   return {
     type: 'rename',
     newDirectoryName,
-    newAppDir: path.join(destinationDir, newDirectoryName)
+    newAppDir: path.join(destinationDir, newDirectoryName),
   };
 }
 
+function spinifiedRmRf(dir) {
+  return spinify(rmrf(dir), `Destroying directory ${dir}`);
+}
+
 export async function clone(opts, destinationDir) {
+  console.time('commandExists');
   if (!await commandExists('git')) {
     throw new Error('Missing `git` command');
   }
+  console.timeEnd('commandExists');
+
+  console.time('ensureUserIsLoggedIn');
   await ensureUserIsLoggedIn();
+  console.timeEnd('ensureUserIsLoggedIn');
 
-  opts.appId = opts.appId || await selectApp();
+  console.time('appId');
+  opts.appId = (opts.appId || await selectApp());
+  console.timeEnd('appId');
 
-  const { name } = await getApp(opts.appId);
+  console.time('getApp');
+  const { name: appName } = await getApp(opts.appId);
+  console.timeEnd('getApp');
 
-  let directoryName = slugify(opts.dir || name, { remove: /[$*_+~.()'"!\-:@]/g });
-  console.log('cloning to', directoryName);
+  let directoryName = slugify((opts.dir || appName), { remove: /[$*_+~.()'"!\-:@]/g });
   let appDir = path.join(destinationDir, directoryName);
 
+  console.log('Cloning to', directoryName);
+
   if (opts.force) {
-    await spinify(rmrf(appDir), `Destroying directory ${directoryName}`);
+    await spinifiedRmRf(appDir);
   }
 
-  if (await pathExists(appDir)) {
+  if (fs.pathExistsSync(appDir)) {
     const action = await queryPathExistsAction(destinationDir, directoryName);
+
     if (action.type === 'overwrite') {
-      await spinify(rmrf(appDir), `Destroying directory ${directoryName}`);
+      await spinifiedRmRf(appDir);
     } else if (action.type === 'abort') {
       console.log('Clone aborted.'.bold.yellow);
       return;
@@ -188,24 +202,26 @@ export async function clone(opts, destinationDir) {
     throw new Error("Path to the directory you are cloning to can't contain spaces.");
   }
 
-  await mkdirp(appDir);
+  fs.ensureDirSync(appDir);
 
-  console.log(`Cloning \`${name}\` to \`${directoryName}\`...`);
+  console.log(`Cloning \`${appName}\` to \`${directoryName}\`...`);
 
   if (opts.platform) {
-    await spinify(copy(opts.platform, appDir), 'Copying platform code');
+    await spinify(fs.copy(opts.platform, appDir), 'Copying platform code');
   } else {
     const platform = await appManager.getApplicationPlatform(opts.appId);
+
     ensurePlatformCompatibility(platform);
+
     await downloadApp(opts.appId, appDir, {
       progress: createProgressHandler({ msg: 'Downloading shoutem platform' }),
       useCache: !opts.force,
 
-      versionCheck: mobileAppVersion => {
+      versionCheck: (mobileAppVersion) => {
         if (!semver.gte(mobileAppVersion, '0.58.9')) {
           throw new Error('This version of CLI only supports platforms containing mobile app 0.58.9 or higher');
         }
-      }
+      },
     });
   }
 
@@ -214,9 +230,10 @@ export async function clone(opts, destinationDir) {
   await fixPlatform(appDir, opts.appId);
 
   const config = await createPlatformConfig(appDir, {
-    appId: opts.appId
+    appId: opts.appId,
   });
-  await setPlatformConfig(appDir, config);
+
+  setPlatformConfig(appDir, config);
 
   if (opts.noconfigure) {
     console.log('Skipping configure step due to --noconfigure flag');

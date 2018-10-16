@@ -1,5 +1,4 @@
 import 'colors';
-import { spawn } from 'child-process-promise';
 import { execSync } from 'child_process';
 
 import msg from '../user_messages';

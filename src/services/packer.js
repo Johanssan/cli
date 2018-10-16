@@ -1,12 +1,15 @@
 import tar from 'tar';
+import targz from 'tar.gz';
 import path from 'path';
-import zlib from 'zlib';
-import move from 'glob-move';
-import tmp from 'tmp-promise';
-import Promise from 'bluebird';
-import { exec } from 'child-process-promise';
-import fs, { pathExists, copy } from 'fs-extra';
+import fs from 'fs-extra';
+import { execSync } from 'child_process';
 
+import {
+  prependPath,
+  hasPackageJson,
+  hasExtensionsJson,
+  createTempDir,
+} from './util';
 import confirmer from './confirmer';
 import { spinify } from './spinner';
 import { buildNodeProject } from './node';
@@ -15,155 +18,128 @@ import { readJsonFile, writeJsonFile } from './data';
 import { getPackageJson, savePackageJson } from './npm';
 
 import { ensureUserIsLoggedIn } from '../commands/login';
-import { getDeveloper } from '../clients/extension-manager';
-import { getExtensionCanonicalName } from '../clients/local-extensions';
 
-const mv = Promise.promisify(require('mv'));
-
-export function checkZipFileIntegrity(filePath) {
-  const zipBuffer = fs.readFileSync(filePath);
-  const zlibOptions = {
-    flush: zlib.Z_SYNC_FLUSH,
-    finishFlush: zlib.Z_SYNC_FLUSH,
-  };
-
-  try {
-    zlib.gunzipSync(zipBuffer, zlibOptions);
-  } catch (err) {
-    err.message = `Zip integrity error: ${err.message} (${filePath})`;
-    return err;
-  }
-
-  return true;
-}
-
-function hasPackageJson(dir) {
-  return pathExists(path.join(dir, 'package.json'));
-}
-
-async function npmPack(dir, destinationDir) {
-  const resultFilename = path.join(destinationDir, `${path.basename(dir)}.tgz`);
+function npmPack(dir, destinationDir) {
+  const timestamp = (new Date()).getTime();
+  const tgzFilename = `${path.basename(dir)}.tgz`;
+  const resultFilename = path.join(destinationDir, tgzFilename);
   const packageJsonPath = path.join(dir, 'package.json');
 
-  const originalFileContent = await fs.readFile(packageJsonPath);
-  const packageJson = await readJsonFile(packageJsonPath);
+  const originalFileContent = fs.readFileSync(packageJsonPath);
+  const packageJson = readJsonFile(packageJsonPath);
 
-  const timestamp = (new Date()).getTime();
   packageJson.version = `${packageJson.version}-build${timestamp}`;
 
-  await writeJsonFile(packageJson, packageJsonPath);
+  writeJsonFile(packageJsonPath, packageJson);
 
-  const { stdout } = await exec('npm pack', { cwd: dir });
-  const packageFilename = stdout.replace(/\n$/, '');
+  const stdout = execSync('npm pack', { cwd: dir });
+  const packageFilename = stdout.toString().replace(/\n$/, '');
   const packagePath = path.join(dir, packageFilename);
 
-  await mv(packagePath, resultFilename);
+  fs.moveSync(packagePath, resultFilename, { overwrite: true });
 
   if (originalFileContent !== null) {
-    await fs.writeFile(packageJsonPath, originalFileContent, 'utf8');
+    fs.writeFileSync(packageJsonPath, originalFileContent, 'utf8');
   }
 }
 
 export async function npmUnpack(tgzFile, destinationDir) {
-  const tmpDir = (await tmp.dir()).path;
+  fs.ensureDirSync(destinationDir);
 
   try {
-    tar.extract({
+    await tar.extract({
       file: tgzFile,
-      strict: true,
-      sync: true,
-      cwd: tmpDir,
+      cwd: destinationDir,
+      strip: 1, // remove leading 'package' dir
     });
   } catch (err) {
+    err.message = `[npmUnpack] ${tgzFile}: ${err.message}`;
     throw err;
   }
-
-  return await move(path.join(tmpDir, 'package', '*'), destinationDir, { dot: true });
 }
 
 export async function shoutemUnpack(tgzFile, destinationDir) {
-  const tmpDir = (await tmp.dir()).path;
+  const tmpDir = await createTempDir();
+
+  const tmpPath = prependPath(tmpDir);
+  const destPath = prependPath(destinationDir);
 
   await npmUnpack(tgzFile, tmpDir);
-  await npmUnpack(path.join(tmpDir, 'app.tgz'), path.join(destinationDir, 'app'));
-  await npmUnpack(path.join(tmpDir, 'server.tgz'), path.join(destinationDir, 'server'));
-  await move(path.join(tmpDir, 'extension.json'), destinationDir);
-}
+  await npmUnpack(tmpPath('app.tgz'), destPath('app'));
+  await npmUnpack(tmpPath('server.tgz'), destPath('server'));
 
-function hasExtensionsJson(dir) {
-  return pathExists(path.join(dir, 'extension.json'));
+  fs.moveSync(tmpPath('extension.json'), destPath('extension.json'), { overwrite: true });
 }
 
 async function offerDevNameSync(extensionDir) {
-  const { name: extensionName } = await loadExtensionJson(extensionDir);
+  const extPath = prependPath(extensionDir);
+  const appDir = extPath('app');
+  const serverDir = extPath('server');
+  const appPackageJson = getPackageJson(appDir);
+  const serverPackageJson = getPackageJson(serverDir);
 
-  const appPackageJson = await getPackageJson(path.join(extensionDir, 'app'));
-  const serverPackageJson = await getPackageJson(path.join(extensionDir, 'server'));
-
-  const { name: appModuleName } = appPackageJson;
-  const { name: serverModuleName } = serverPackageJson;
   const { name: developerName } = await ensureUserIsLoggedIn(true);
+  const { name: extensionName } = loadExtensionJson(extensionDir);
+  const { name: serverModuleName } = serverPackageJson;
+  const { name: appModuleName } = appPackageJson;
 
   const targetModuleName = `${developerName}.${extensionName}`;
+
   if (targetModuleName === appModuleName && targetModuleName === serverModuleName) {
     return;
   }
 
-  if (!await confirmer(`You're uploading an extension that isn't yours, do you want to rename it in the package.json files?`)) {
+  const confirmMessage = 'You\'re uploading an extension that isn\'t yours, do you want to rename it in the package.json files?';
+
+  if (!await confirmer(confirmMessage)) {
     return;
   }
 
   appPackageJson.name = targetModuleName;
   serverPackageJson.name = targetModuleName;
 
-  await savePackageJson(path.join(extensionDir, 'app'), appPackageJson);
-  await savePackageJson(path.join(extensionDir, 'server'), serverPackageJson);
+  savePackageJson(appDir, appPackageJson);
+  savePackageJson(serverDir, serverPackageJson);
 }
 
 export default async function shoutemPack(dir, options) {
-  const packedDirectories = ['app', 'server'].map(d => path.join(dir, d));
+  const dirPath = prependPath(dir);
+  const packedDirectories = ['app', 'server'].map(d => dirPath(d));
 
-  if (!await hasExtensionsJson(dir)) {
+  if (!hasExtensionsJson(dir)) {
     throw new Error(`${dir} cannot be packed because it has no extension.json file.`);
   }
 
   await await offerDevNameSync(dir);
 
-  const tmpDir = (await tmp.dir()).path;
+  const tmpDir = await createTempDir();
   const packageDir = path.join(tmpDir, 'package');
 
-  await fs.mkdir(packageDir);
-
-  const dirsToPack = await Promise.filter(packedDirectories, hasPackageJson);
+  fs.ensureDirSync(packageDir);
 
   if (options.nobuild) {
     console.error('Skipping build step due to --nobuild flag.');
   } else {
-    await spinify(buildNodeProject(path.join(dir, 'server')), 'Building the server part...', 'OK');
-    await spinify(buildNodeProject(path.join(dir, 'app')), 'Building the app part...', 'OK');
+    await spinify(buildNodeProject(dirPath('server')), 'Building the server part...', 'OK');
+    await spinify(buildNodeProject(dirPath('app')), 'Building the app part...', 'OK');
   }
 
-  return await spinify(async () => {
+  const dirsToPack = packedDirectories.filter(hasPackageJson);
+
+  return spinify(async () => {
     for (const partDir of dirsToPack) {
-      await npmPack(partDir, packageDir);
+      npmPack(partDir, packageDir);
     }
 
-    const extensionJsonPathSrc = path.join(dir, 'extension.json');
+    const extensionJsonPathSrc = dirPath('extension.json');
     const extensionJsonPathDest = path.join(packageDir, 'extension.json');
     const destinationDir = options.packToTempDir ? tmpDir : dir;
     const destinationPackage = path.join(destinationDir, 'extension.tgz');
 
-    await copy(extensionJsonPathSrc, extensionJsonPathDest);
+    fs.copySync(extensionJsonPathSrc, extensionJsonPathDest);
 
     try {
-      tar.create({
-          gzip: true,
-          sync: true,
-          cwd: tmpDir,
-          file: destinationPackage,
-        },
-        ['package']
-      );
+      await targz().compress(packageDir, destinationPackage);
     } catch (err) {
       err.message = `TAR error while trying to gzip '${packageDir}' to '${destinationPackage}': ${err.message}`;
       throw err;

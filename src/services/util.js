@@ -44,3 +44,7 @@ export function checkZipFileIntegrity(filePath) {
 
   return true;
 }
+
+export function removeTrailingSlash(str) {
+  return str.replace(/\/$/, '');
+}

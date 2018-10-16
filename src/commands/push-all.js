@@ -1,14 +1,18 @@
-import { uploadExtension } from '../commands/push';
-import msg from '../user_messages';
-import { pathExists } from 'fs-extra';
-import { handleError } from '../services/error-handler';
-import bluebird from 'bluebird';
 import path from 'path';
+import fs from 'fs-extra';
 import { prompt, Separator } from 'inquirer';
-import { getHostEnvName } from '../clients/server-env';
 
-export async function pushAll(args) {
-  const extPaths = await bluebird.filter(args.paths, f => pathExists(path.join(f, 'extension.json')));
+import msg from '../user_messages';
+import { uploadExtension } from '../commands/publish';
+import { getHostEnvName } from '../clients/server-env';
+import { handleError } from '../services/error-handler';
+
+function extJsonExistsInDir(dir) {
+  return fs.pathExistsSync(path.join(dir, 'extension.json'));
+}
+
+export default async function pushAll(args) {
+  const extPaths = args.paths.filter(p => extJsonExistsInDir(p));
 
   if (extPaths.length === 0) {
     console.log('No extensions found in current directory.');
@@ -16,24 +20,34 @@ export async function pushAll(args) {
   }
 
   if (args.nopush) {
-    return { pushed: extPaths, notPushed: [] };
+    return {
+      pushed: extPaths,
+      notPushed: [],
+    };
   }
-
-  let { pathsToPush } = args.noconfirm || await prompt({
-    type: 'checkbox',
-    name: 'pathsToPush',
-    message: `Check extensions you want to push to ${getHostEnvName()}?`,
-    choices: extPaths.concat(new Separator()),
-    default: extPaths,
-    pageSize: 20
-  });
-  pathsToPush = pathsToPush || extPaths;
 
   const pushed = [];
   const notPushed = [];
+  const cwd = process.cwd();
+  let pathsToPush = extPaths;
 
-  for (const extPath of pathsToPush) {
-    try  {
+  if (!args.noconfirm) {
+    pathsToPush = await prompt({
+      type: 'checkbox',
+      name: 'pathsToPush',
+      message: `Check extensions you want to push to ${getHostEnvName()}?`,
+      choices: extPaths.concat(new Separator()),
+      default: extPaths,
+      pageSize: 20,
+    });
+  }
+
+  for (let extPath of pathsToPush) {
+    if (!path.isAbsolute(extPath)) {
+      extPath = path.join(cwd, extPath);
+    }
+
+    try {
       await uploadExtension(args, extPath);
       console.log(msg.push.complete());
       pushed.push(extPath);
@@ -44,14 +58,17 @@ export async function pushAll(args) {
   }
 
   if (pushed.length > 0) {
-    console.log(`Pushed:`);
+    console.log('Pushed:');
     console.log(pushed.map(e => `  ${e}`).join('\n'));
   }
 
   if (notPushed.length > 0) {
-    console.log(`Not pushed:`);
+    console.log('Not pushed:');
     console.log(notPushed.map(e => `  ${e}`).join('\n'));
   }
 
-  return { pushed, notPushed };
+  return {
+    pushed,
+    notPushed,
+  };
 }

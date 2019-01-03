@@ -1,5 +1,5 @@
 import fs from 'fs-extra';
-import download from 'download';
+import mkdirp from 'mkdirp-promise';
 import inquirer from 'inquirer';
 import slugify from 'slugify';
 import semver from 'semver';
@@ -9,20 +9,14 @@ import 'colors';
 
 import { ensureUserIsLoggedIn } from './login';
 import { getExtension } from '../clients/extension-manager';
-import * as appManager from '../clients/app-manager';
+import appManager from '../clients/app-manager';
 import { getApp } from '../clients/legacy-service';
 
-import { getHttpErrorMessage } from '../services/get-http-error-message';
 import { createProgressHandler } from '../services/progress-bar';
 import commandExists from '../services/command-exists';
-import { shoutemUnpack } from '../services/packer';
 import selectApp from '../services/app-selector';
 import { spinify } from '../services/spinner';
-import {
-  checkZipFileIntegrity,
-  createTempDir,
-  removeTrailingSlash,
-} from '../services/util';
+import { decompressFromUrl, decompressFile } from '../services/decompress';
 import {
   downloadApp,
   fixPlatform,
@@ -31,54 +25,40 @@ import {
   setPlatformConfig,
 } from '../services/platform';
 
+function removeTrailingSlash(str) {
+  return str.replace(/\/$/, '');
+}
+
 async function getExtensionUrl(extId) {
   const resp = await getExtension(extId);
   const { location: { extension } } = resp;
-  const extensionPath = removeTrailingSlash(extension.package);
 
-  return path.join(extensionPath, 'extension.tgz');
+  return `${removeTrailingSlash(extension.package)}/extension.tgz`;
 }
 
-async function downloadExtension(extension, canonicalName) {
-  const url = await getExtensionUrl(extension);
-  const tmpDir = await createTempDir();
-  const fileName = 'extension.tgz';
-  const tgzFile = path.join(tmpDir, fileName);
+export async function unpackExtension(extensionDir, options) {
+  const appFile = path.join(extensionDir, 'app.tgz');
+  const serverFile = path.join(extensionDir, 'server.tgz');
+  const appDir = path.join(extensionDir, 'app');
+  const serverDir = path.join(extensionDir, 'server');
 
-  try {
-    const fileData = await download(url);
-    fs.writeFileSync(tgzFile, fileData);
-  } catch (err) {
-    const errorMessage = getHttpErrorMessage(err.message);
-    err.message = `Could not fetch extension ${canonicalName}\nRequested URL: ${url}\n${errorMessage}`;
-    throw err;
-  }
-
-  return tgzFile;
+  await decompressFile(appFile, appDir, options);
+  await decompressFile(serverFile, serverDir, options);
 }
 
 async function pullExtension(destinationDir, { extension, canonicalName }) {
-  let tgzFile = await downloadExtension(extension);
-  let zipCheck = checkZipFileIntegrity(tgzFile);
-
-  if (zipCheck !== true) {
-    if (zipCheck.code === 'Z_BUF_ERROR') {
-      // try downloading the (possibly corrupted) archive one more time
-      console.warn('\nReceived Z_BUF_ERROR, retrying download...');
-      tgzFile = await downloadExtension(extension, canonicalName);
-      zipCheck = checkZipFileIntegrity(tgzFile);
-
-      if (zipCheck !== true) {
-        throw (zipCheck);
-      }
-    }
-  }
-
+  const url = await getExtensionUrl(extension);
+  const ext = path.extname(url.split('/').pop());
+  const fileName = `extension-${canonicalName}${ext}`;
   const destination = path.join(destinationDir, canonicalName);
 
+  fs.ensureDirSync(destination);
+
   try {
-    await shoutemUnpack(tgzFile, destination);
+    await decompressFromUrl(url, destination, { fileName, deleteArchiveWhenDone: true });
+    await unpackExtension(destination, { deleteArchiveWhenDone: true });
   } catch (err) {
+    err.message = `Could not fetch extension ${canonicalName}\nRequested URL: ${url}\n${err.message}`;
     throw err;
   }
 }
@@ -86,21 +66,21 @@ async function pullExtension(destinationDir, { extension, canonicalName }) {
 export async function pullExtensions(appId, destinationDir) {
   const installations = await appManager.getInstallations(appId);
   const n = installations.length;
-  const i = 0;
+  let i = 0;
 
-  for (i; i < n; i + 1) {
-    const inst = installations[i];
-    const message = `Downloading extension ${i}/${n}: ${inst.canonicalName}`;
-    await spinify(pullExtension(destinationDir, inst), message);
+  for (const inst of installations) {
+    i++;
+    await spinify(
+      pullExtension(destinationDir, inst), `Downloading extension ${i}/${n}: ${inst.canonicalName}`
+    );
   }
 }
 
 function ensurePlatformCompatibility(platform) {
-  const msg = `Your app is using Shoutem Platform ${platform.version},
-    but cloning is supported only on Shoutem Platform 1.1.2 or later.
-    Please update the Platform through Settings -> Shoutem Platform -> Install page
-    on the Builder, or install older (and unsupported) version of
-    the Shoutem CLI by running 'npm install -g @shoutem/cli@0.0.152'`;
+  const msg = `Your app is using Shoutem Platform ${platform.version}` +
+    `, but cloning is supported only on Shoutem Platform 1.1.2 or later.\n` +
+    'Please, update the Platform through Settings -> Shoutem Platform -> Install page on the Builder or install older (and unsupported) version of ' +
+    'the Shoutem CLI by running \'npm install -g @shoutem/cli@0.0.152\'';
 
   if (semver.lte(platform.version, '1.1.1')) {
     throw new Error(msg);
@@ -152,43 +132,28 @@ async function queryPathExistsAction(destinationDir, oldDirectoryName) {
   };
 }
 
-function spinifiedRmRf(dir) {
-  return spinify(rmrf(dir), `Destroying directory ${dir}`);
-}
-
 export async function clone(opts, destinationDir) {
-  console.time('commandExists');
   if (!await commandExists('git')) {
     throw new Error('Missing `git` command');
   }
-  console.timeEnd('commandExists');
-
-  console.time('ensureUserIsLoggedIn');
   await ensureUserIsLoggedIn();
-  console.timeEnd('ensureUserIsLoggedIn');
 
-  console.time('appId');
-  opts.appId = (opts.appId || await selectApp());
-  console.timeEnd('appId');
+  opts.appId = opts.appId || await selectApp();
 
-  console.time('getApp');
-  const { name: appName } = await getApp(opts.appId);
-  console.timeEnd('getApp');
+  const { name } = await getApp(opts.appId);
 
-  let directoryName = slugify((opts.dir || appName), { remove: /[$*_+~.()'"!\-:@]/g });
+  let directoryName = slugify(opts.dir || name, { remove: /[$*_+~.()'"!\-:@]/g });
+  console.log('cloning to', directoryName);
   let appDir = path.join(destinationDir, directoryName);
 
-  console.log('Cloning to', directoryName);
-
   if (opts.force) {
-    await spinifiedRmRf(appDir);
+    await spinify(rmrf(appDir), `Destroying directory ${directoryName}`);
   }
 
   if (fs.pathExistsSync(appDir)) {
     const action = await queryPathExistsAction(destinationDir, directoryName);
-
     if (action.type === 'overwrite') {
-      await spinifiedRmRf(appDir);
+      await spinify(rmrf(appDir), `Destroying directory ${directoryName}`);
     } else if (action.type === 'abort') {
       console.log('Clone aborted.'.bold.yellow);
       return;
@@ -202,22 +167,21 @@ export async function clone(opts, destinationDir) {
     throw new Error("Path to the directory you are cloning to can't contain spaces.");
   }
 
-  fs.ensureDirSync(appDir);
+  await mkdirp(appDir);
 
-  console.log(`Cloning \`${appName}\` to \`${directoryName}\`...`);
+  console.log(`Cloning \`${name}\` to \`${directoryName}\`...`);
 
   if (opts.platform) {
     await spinify(fs.copy(opts.platform, appDir), 'Copying platform code');
   } else {
     const platform = await appManager.getApplicationPlatform(opts.appId);
-
     ensurePlatformCompatibility(platform);
-
     await downloadApp(opts.appId, appDir, {
       progress: createProgressHandler({ msg: 'Downloading shoutem platform' }),
       useCache: !opts.force,
+      deleteArchiveWhenDone: true,
 
-      versionCheck: (mobileAppVersion) => {
+      versionCheck: mobileAppVersion => {
         if (!semver.gte(mobileAppVersion, '0.58.9')) {
           throw new Error('This version of CLI only supports platforms containing mobile app 0.58.9 or higher');
         }
@@ -232,8 +196,7 @@ export async function clone(opts, destinationDir) {
   const config = await createPlatformConfig(appDir, {
     appId: opts.appId,
   });
-
-  setPlatformConfig(appDir, config);
+  await setPlatformConfig(appDir, config);
 
   if (opts.noconfigure) {
     console.log('Skipping configure step due to --noconfigure flag');
@@ -255,3 +218,4 @@ export async function clone(opts, destinationDir) {
     console.log('HINT: You should probably install Facebook\'s `watchman` before running react-native commands'.bold.yellow);
   }
 }
+

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 const semver = require('semver');
 const path = require('path');
+require('colors');
+
 const getHomeDir = require('./home-dir');
 const packageJson = require('../package.json');
-require('colors');
 
 const homeDir = getHomeDir();
 const nodeVer = process.versions.node;
@@ -25,12 +26,11 @@ if (semver.lt(nodeVer, '6.0.0')) {
   process.exit(1);
 }
 
-const babelCachePath = path.join(homeDir, 'cache', 'babel-cache');
-process.env.BABEL_CACHE_PATH = process.env.BABEL_CACHE_PATH || babelCachePath;
+process.env.SHOUTEM_CLI_DIRNAME = path.basename(__dirname);
 
-const currentScriptDir = path.basename(__dirname);
-
-if (currentScriptDir === 'src') {
+if (process.env.SHOUTEM_CLI_DIRNAME === 'src') {
+  const babelCachePath = path.join(homeDir, 'cache', 'babel-cache');
+  process.env.BABEL_CACHE_PATH = process.env.BABEL_CACHE_PATH || babelCachePath;
   require('babel-register')(packageJson.babel);
 }
 

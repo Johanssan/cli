@@ -1,7 +1,4 @@
-const path = require('path');
-
-const serverEnvPath = path.resolve(__dirname, '../src/clients/server-env.js');
-const serverEnv = require(serverEnvPath);
+const serverEnv = require(`../${process.env.SHOUTEM_CLI_DIRNAME}/clients/server-env`);
 
 const envValues = {
   production: {

@@ -3,17 +3,17 @@ import path from 'path';
 import _ from 'lodash';
 import fs from 'fs-extra';
 import replace from 'replace-in-file';
-
+import appManager from '../clients/app-manager';
+import extensionManager from '../clients/extension-manager';
+import { decompressFromUrl } from './decompress';
 import cliUrls from '../../config/services';
 import { getRefreshToken, createAppAccessToken } from '../clients/auth-service';
-import * as appManager from '../clients/app-manager';
 import { readJsonFile, writeJsonFile } from './data';
 import { ensureYarnInstalled } from './yarn';
-import * as reactNative from './react-native';
+import reactNative from './react-native';
 import commandExists from './command-exists';
-import * as analytics from './analytics';
-import decompressUri from './decompress';
-import * as npm from './npm';
+import analytics from './analytics';
+import npm from './npm';
 
 function isPlatformDirectory(dir) {
   const { name } = readJsonFile(path.join(dir, 'package.json')) || {};
@@ -82,6 +82,7 @@ export function setPlatformConfig(platformDir, mobileConfig) {
 export async function configurePlatform(platformDir) {
   await ensureYarnInstalled();
   await reactNative.ensureInstalled();
+
   if (process.platform === 'darwin' && !await commandExists('pod')) {
     throw new Error('Missing `pods` command. Please install cocoapods and run `shoutem configure` in the ' +
       `${platformDir} directory`);
@@ -131,27 +132,31 @@ export async function fixPlatform(platformDir, appId) {
   }
 }
 
-async function pullPlatform(version, destination, options) {
-  const url = `${cliUrls.mobileAppUrl}/archive/v${version}.tar.gz`;
-  await decompressUri(url, destination, { ...options, strip: 1, useCache: options.useCache });
+function pullPlatform(location, version, destination, options) {
+  const platformUrl = !!location ? location : `${cliUrls.mobileAppUrl}/archive/v${version}.tar.gz`;
+  return decompressFromUrl(platformUrl, destination, { ...options, strip: 1, useCache: options.useCache });
 }
 
 export async function downloadApp(appId, destinationDir, options = {}) {
   analytics.setAppId(appId);
 
   const versionCheck = options.versionCheck || (() => {});
-  const { mobileAppVersion } = await appManager.getApplicationPlatform(appId);
+
+  const platformInstallationData = await appManager.getApplicationPlatform(appId, true);
+  const { platform: platformId, mobileAppVersion } = platformInstallationData;
+
+  const platform = await extensionManager.getPlatform(platformId);
 
   await versionCheck(mobileAppVersion);
-  await pullPlatform(mobileAppVersion, destinationDir, options);
+  await pullPlatform(platform.location, mobileAppVersion, destinationDir, options);
 
-  if (!fs.pathExistsSync(destinationDir)) {
-    throw new Error('Platform code could not be downloaded from github. Make sure that platform is setup correctly.');
+  if (!await fs.pathExistsSync(destinationDir)) {
+    throw new Error('Platform code could not be downloaded. Make sure that platform is setup correctly.');
   }
 }
 
-export function addToExtensionsJs(platformDir, extensionPath) {
-  const { name } = npm.getPackageJson(path.join(extensionPath, 'app'));
+export async function addToExtensionsJs(platformDir, extensionPath) {
+  const { name } = await npm.getPackageJson(path.join(extensionPath, 'app'));
 
   const extensionsJsPath = path.join(platformDir, 'extensions.js');
 

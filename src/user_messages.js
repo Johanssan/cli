@@ -11,14 +11,14 @@ export default {
       missingEnv: () => 'Mobile environment does not exist, try `shoutem env install` first',
       alreadyLatest: version => `Already at latest version ${version}. Use \`shoutem env install -f\` to reinstall.`,
       complete: pkgJson => `Mobile environment updated to version ${pkgJson.version}. ` +
-      'You can now run `shoutem run-ios` or `shoutem run-android`'
+      'You can now run `shoutem run-ios` or `shoutem run-android`',
     },
     info: {
       downloading: version => `Downloading environment v${version}...`,
       downloaded: () => 'Mobile app downloaded, installing dependencies...',
       dependenciesInstalled: () => 'Dependencies installed, linking native dependencies...',
-      linked: () => 'Native dependencies linked!'
-    }
+      linked: () => 'Native dependencies linked!',
+    },
   },
   init: {
     missingName: () => 'Extensions must have a name.',
@@ -27,40 +27,40 @@ export default {
     suggestName: suggestion => `Try something like ${suggestion}`,
     requestInfo: () => 'Enter information about your extension. Press `return` to accept (default) values.',
     nonEmpty: () => 'Couldn’t initialize extension in non-empty folder. ' +
-      'Please, clear the folder and run the initialization process again.'
+      'Please, clear the folder and run the initialization process again.',
   },
   install: {
     complete: () => 'Extension installed',
     completeOntoNew: app => `Extension installed onto newly created \`${app}\` application.`,
     seeNewInBrowser: url => `See it in browser: ${url}`,
-    notExtensionDir: () => 'No extension found. Try `shoutem push` before installing.'
+    notExtensionDir: () => 'No extension found. Try `shoutem push` before installing.',
   },
   uninstall: {
     missingExtension: () => 'Extension does not exist. You must `shoutem push` it first.',
     missingInstallation: () => 'Extension not installed.',
-    complete: () => 'Extension uninstalled.'
+    complete: () => 'Extension uninstalled.',
   },
   link: {
     alreadyLinked: () => 'Directory already linked',
-    complete: () => 'Directory successfully linked. Please, kill the packager before running the app.'
+    complete: () => 'Directory successfully linked. Please, kill the packager before running the app.',
   },
   login: {
     complete: dev => `Registered as \`${dev.name}\`.`,
     credentialsPrompt: url => `Enter your Shoutem credentials (obtained at ${url.bold}):`,
-    loggedIn: credentials => `\nLogged in as \`${credentials.username}\`.`
+    loggedIn: credentials => `\nLogged in as \`${credentials.username}\`.`,
   },
   logout: {
-    complete: () => 'Successfully logged out.'
+    complete: () => 'Successfully logged out.',
   },
   page: {
     add: {
-      complete: ({ pageName, path }) => `Page ${pageName} is created in \`${ path }\` folder!`
-    }
+      complete: ({ pageName, path }) => `Page ${pageName} is created in \`${path}\` folder!`,
+    },
   },
   publish: {
     complete: extJson => `Version ${extJson.version.cyan} of ${extJson.name.cyan} extension was published!`,
     failed: detail => `Publish failed: ${detail}`,
-    publishInfo: extJson => `Publishing ${extJson.name.cyan} version ${extJson.version.cyan}...`
+    publishInfo: extJson => `Publishing ${extJson.name.cyan} version ${extJson.version.cyan}...`,
   },
   push: {
     complete: () => 'Success!'.green.bold,
@@ -75,25 +75,25 @@ export default {
   schema: {
     add: {
       complete: (name, path) => `File \`${path}\` is created.`,
-      alreadyExists: schemaName => `Schema "${schemaName}" already exists. Pick another name.`
-    }
+      alreadyExists: schemaName => `Schema "${schemaName}" already exists. Pick another name.`,
+    },
   },
   screen: {
     add: {
       complete: (screenName, path) => `Screen \`${screenName}\` created in file \`${path}\`!`,
-      alreadyExists: screenName => `Screen "${screenName}" already exists. Pick another name.`
-    }
+      alreadyExists: screenName => `Screen "${screenName}" already exists. Pick another name.`,
+    },
   },
   shortcut: {
     add: {
       complete: shortcutName => `Shortcut \`${shortcutName}\` is created.`,
-      alreadyExists: shortcutName => `Shortcut "${shortcutName}" already exists. Pick another name.`
-    }
+      alreadyExists: shortcutName => `Shortcut "${shortcutName}" already exists. Pick another name.`,
+    },
   },
   theme: {
     add: {
-      complete: (themeName, path) => `File \`${path}\` is created.`
-    }
+      complete: (themeName, path) => `File \`${path}\` is created.`,
+    },
   },
   unlink: {
     notLinked: () => 'This directory is not linked to the mobile environment. There is nothing to unlink.',
@@ -112,7 +112,7 @@ export default {
     info: (platform, config) => `Running ${platform} shoutem app with id ${config.appId}`,
     complete: platform => `Finished running ${platform} app.`,
     missingConfig: () => 'Mobile environment wasn\'t correctly installed. Please run `shoutem env install -f` to reinstall',
-    killPackagerAndAdb: () => 'Could not clean up the build directory. Please check that react-packager and adb are not running'
+    killPackagerAndAdb: () => 'Could not clean up the build directory. Please check that react-packager and adb are not running',
   },
   show: {
     missingEnv: () => 'No shoutem env was set. Please run shoutem env install.',
@@ -123,27 +123,27 @@ export default {
     listExtensions: paths => 'Linked directories:\n' + paths.map(path => `  ${path}`).join('\n'),
   },
   pack: {
-    missingBuildTask: dir => `Skipping build for \`${dir}\` due to missing build task`
+    missingBuildTask: dir => `Skipping build for \`${dir}\` due to missing build task`,
   },
   yarn: {
     missing: () => 'Missing yarn command. Please install yarn by running `npm install -g yarn`.',
-    outdated: (minVersion) => `Yarn version outdated. Please update yarn to v${minVersion} or newer by running \`npm install -g yarn\``
+    outdated: (minVersion) => `Yarn version outdated. Please update yarn to v${minVersion} or newer by running \`npm install -g yarn\``,
   },
   reactNative: {
     killPackager: () => 'Use `shoutem run-ios --ignore-packager` or kill the packager process before running the app',
-    missing: () => 'Missing react-native command. Please install react-native by running \`npm install -g react-native-cli\`.'
+    missing: () => 'Missing react-native command. Please install react-native by running \`npm install -g react-native-cli\`.',
   },
   cocoapods: {
-    missing: () => 'Missing pods command. Please install cocoa pods by running \`sudo gem install cocoapods\`.'
+    missing: () => 'Missing pods command. Please install cocoa pods by running \`sudo gem install cocoapods\`.',
   },
   ios: {
     notOnMac: () => 'Unfortunately, Apple only lets you develop for iOS on a Mac. However, ' +
-      'you can develop an application, test it on Android and see how it works on iPhone in Shoutem Builder!'
+      'you can develop an application, test it on Android and see how it works on iPhone in Shoutem Builder!',
   },
   node: {
-    outdated: minVersion => `Your node version is too old. Please update node to version ${minVersion} or newer`
+    outdated: minVersion => `Your node version is too old. Please update node to version ${minVersion} or newer`,
   },
   version: {
-    updateRequired: () => 'WARNING: This is an outdated version of shoutem CLI. Do you want to update it?'
-  }
-}
+    updateRequired: () => 'WARNING: This is an outdated version of shoutem CLI. Do you want to update it?',
+  },
+};

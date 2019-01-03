@@ -1,12 +1,14 @@
-import { isLatest } from '../services/npmjs';
-import apiUrls from '../../config/services';
-import msg from '../../src/user_messages';
 import { spawn } from 'child-process-promise';
-import { version } from '../../package.json';
+import 'colors';
+
 import confirm from '../services/confirmer';
 import * as cache from '../services/cache';
 import { spinify } from '../services/spinner';
-import 'colors';
+import { isLatest } from '../services/npmjs';
+
+import { version } from '../../package.json';
+import apiUrls from '../../config/services';
+import msg from '../user_messages';
 
 async function confirmUpdate() {
   if (await cache.getValue('updateConfirmed') === false) {

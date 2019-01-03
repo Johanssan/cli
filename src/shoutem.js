@@ -2,9 +2,10 @@
 
 const semver = require('semver');
 const path = require('path');
+require('colors');
+
 const getHomeDir = require('./home-dir');
 const packageJson = require('../package.json');
-require('colors');
 
 const homeDir = getHomeDir();
 
@@ -14,13 +15,18 @@ if (!path.isAbsolute(homeDir)) {
   process.exit(1);
 }
 
-if (semver.lt(process.versions.node, '6.0.0')) {
-  console.error(`You appear to be using Node v${process.versions.node}, however, Node 6 or later is required`);
-  return;
+process.env.SHOUTEM_CLI_DIRNAME = path.basename(__dirname);
+
+const nodeVer = process.versions.node;
+
+if (semver.lt(nodeVer, '6.0.0')) {
+  console.error(`You appear to be using Node v${nodeVer}, however, Node 6 or later is required`);
+} else {
+  if (process.env.SHOUTEM_CLI_DIRNAME === 'src') {
+    const babelCachePath = path.join(homeDir, 'cache', 'babel-cache');
+    process.env.BABEL_CACHE_PATH = process.env.BABEL_CACHE_PATH || babelCachePath;
+    require('babel-register')(packageJson.babel);
+  }
+
+  require('./cli');
 }
-
-const babelCachePath = path.join(homeDir, 'cache', 'babel-cache');
-process.env.BABEL_CACHE_PATH = process.env.BABEL_CACHE_PATH || babelCachePath;
-
-require('babel-register')(packageJson.babel);
-require('./cli');
